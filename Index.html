@@ -68,6 +68,14 @@
             box-shadow: 0 0 8px rgba(52, 152, 219, 0.3); 
         }
 
+        .buttons-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: center;
+            margin-top: 10px;
+        }
+
         button.primary { 
             background: linear-gradient(135deg, #3498db, #2980b9);
             color: white; 
@@ -79,9 +87,24 @@
             cursor: pointer; 
             transition: all 0.2s; 
             box-shadow: 0 4px 15px rgba(52,152,219,0.4);
-            margin-top: 10px;
+            width: 200px;
         }
         button.primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(52,152,219,0.6); }
+
+        button.secondary {
+            background: transparent;
+            color: #e74c3c;
+            border: 1px solid #e74c3c;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        button.secondary:hover {
+            background: #e74c3c;
+            color: white;
+        }
 
         /* אזור המשחק */
         #game-area { 
@@ -137,6 +160,10 @@
             justify-content: center;
             flex-wrap: wrap;
         }
+        /* תמיכה בכיווניות LTR למילים באנגלית */
+        #word-display[dir="ltr"] {
+            flex-direction: row;
+        }
 
         .letter-box { display: inline-block; min-width: 40px; text-align: center; border-bottom: 4px solid #2c3e50; padding-bottom: 5px; }
         .letter-pop { animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; display: inline-block; }
@@ -165,6 +192,7 @@
             transition: all 0.2s; 
             font-weight: bold; 
             color: #34495e;
+            text-transform: uppercase;
         }
         .letter-btn:hover:not(.disabled) { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.15); background: #f8f9fa; }
         .letter-btn.correct { background: #2ecc71; color: white; box-shadow: 0 0 15px rgba(46, 204, 113, 0.5); animation: popIn 0.3s; }
@@ -183,8 +211,16 @@
             60% { transform: translateY(-10px); }
         }
 
+        /* עיצוב כפתורי הפעולה (הבא / דילוג) */
+        .game-actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+            align-items: center;
+            min-height: 50px;
+        }
+
         #next-btn { 
-            margin-top: 30px; 
             padding: 12px 35px; 
             cursor: pointer; 
             border-radius: 30px; 
@@ -198,6 +234,22 @@
             display: none; 
         }
         #next-btn:hover { background: #e67e22; transform: translateY(-2px); }
+
+        #skip-btn {
+            background: transparent;
+            color: #95a5a6;
+            border: 2px solid #bdc3c7;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: bold;
+        }
+        #skip-btn:hover {
+            background: #bdc3c7;
+            color: white;
+        }
 
         .hidden { display: none !important; }
         
@@ -215,12 +267,15 @@
 
     <div id="setup" class="setup-section">
         <h2 style="color: #34495e; margin-top: 0; margin-bottom: 5px;">הגדרות המשחק</h2>
-        <p style="color: #7f8c8d; margin-bottom: 25px;">הזן עד 10 מילים. לכל מילה ניתן לתת קטגוריה משלה (לא חובה למלא את כל השורות).</p>
+        <p style="color: #7f8c8d; margin-bottom: 25px;">הזן עד 10 מילים (עברית או אנגלית). לכל מילה ניתן לתת קטגוריה משלה. הנתונים נשמרים אוטומטית.</p>
         
         <div class="words-list-container" id="words-inputs-container">
             </div>
 
-        <button class="primary" onclick="startSession()">התחל שיעור!</button>
+        <div class="buttons-container">
+            <button class="primary" onclick="startSession()">התחל שיעור!</button>
+            <button class="secondary" onclick="clearStorage()">מחק רשימה שמורה</button>
+        </div>
     </div>
 
     <div id="game-area" class="hidden">
@@ -232,7 +287,10 @@
             <div class="status" id="status-msg">פסילות: 0 מתוך 8</div>
             <div class="letters-grid" id="letters-container"></div>
             
-            <button id="next-btn" onclick="goToNextWord()">למילה הבאה</button>
+            <div class="game-actions">
+                <button id="skip-btn" onclick="goToNextWord()">⏭️ דלג מילה</button>
+                <button id="next-btn" onclick="goToNextWord()">למילה הבאה</button>
+            </div>
         </div>
 
         <div class="hangman-visual">
@@ -261,19 +319,37 @@
     </div>
 
     <script>
-        let wordsData = []; // מערך שישמור אובייקטים של {category, word}
+        let wordsData = []; 
         let currentWordIndex = 0;
         let secretWord = "";
         let guessedLetters = [];
         let mistakes = 0;
+        let currentAlphabet = [];
         const MAX_MISTAKES = 8;
         
-        const alphabet = "אבגדהוזחטיכלמנסעפצקרשת".split("");
+        const hebrewAlphabet = "אבגדהוזחטיכלמנסעפצקרשת".split("");
+        const englishAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
         const finalToRegular = { 'ם': 'מ', 'ן': 'נ', 'ץ': 'צ', 'ף': 'פ', 'ך': 'כ' };
 
-        // בניית שורות ההזנה בטעינת העמוד
+        // מילונים לתרגום אוטומטי של המקלדת (כשהמורה שוכח להחליף שפה)
+        const hebToEngMap = {
+            'ק':'E', 'ר':'R', 'א':'T', 'ט':'Y', 'ו':'U', 'ן':'I', 'ם':'O', 'פ':'P',
+            'ש':'A', 'ד':'S', 'ג':'D', 'כ':'F', 'ע':'G', 'י':'H', 'ח':'J', 'ל':'K', 'ך':'L',
+            'ז':'Z', 'ס':'X', 'ב':'C', 'ה':'V', 'נ':'B', 'מ':'N', 'צ':'M', 'ת':',', 'ץ':'.'
+        };
+
+        const engToHebMap = {
+            'q':'/', 'w':'\'', 'e':'ק', 'r':'ר', 't':'א', 'y':'ט', 'u':'ו', 'i':'ן', 'o':'ם', 'p':'פ',
+            'a':'ש', 's':'ד', 'd':'ג', 'f':'כ', 'g':'ע', 'h':'י', 'j':'ח', 'k':'ל', 'l':'ך',
+            'z':'ז', 'x':'ס', 'c':'ב', 'v':'ה', 'b':'נ', 'n':'מ', 'm':'צ', ',':'ת', '.':'ץ'
+        };
+
+        // בניית שורות ההזנה בטעינת העמוד וטעינת הנתונים שנשמרו
         window.onload = function() {
             const container = document.getElementById('words-inputs-container');
+            
+            const savedData = JSON.parse(localStorage.getItem('hangmanSavedWords')) || [];
+
             for (let i = 1; i <= 10; i++) {
                 const row = document.createElement('div');
                 row.className = 'word-row';
@@ -284,17 +360,24 @@
                 const catInput = document.createElement('input');
                 catInput.type = 'text';
                 catInput.className = 'cat-input';
-                // דוגמאות ממחישות בשורה הראשונה והשנייה
-                if (i === 1) catInput.placeholder = "נושא (למשל: מגמות)";
+                if (i === 1) catInput.placeholder = "נושא (למשל: מגמות / Food)";
                 else if (i === 2) catInput.placeholder = "נושא (למשל: אוכל)";
                 else catInput.placeholder = "נושא";
 
                 const wordInput = document.createElement('input');
                 wordInput.type = 'text';
                 wordInput.className = 'word-input';
-                if (i === 1) wordInput.placeholder = "מילה (למשל: ביולוגיה) - חובה";
+                if (i === 1) wordInput.placeholder = "מילה (למשל: ביולוגיה / Pizza)";
                 else if (i === 2) wordInput.placeholder = "מילה (למשל: כריך)";
                 else wordInput.placeholder = "מילה";
+
+                if (savedData[i - 1]) {
+                    catInput.value = savedData[i - 1].category || "";
+                    wordInput.value = savedData[i - 1].word || "";
+                }
+
+                catInput.addEventListener('input', saveWordsToStorage);
+                wordInput.addEventListener('input', saveWordsToStorage);
 
                 row.appendChild(numberSpan);
                 row.appendChild(catInput);
@@ -303,16 +386,34 @@
             }
         };
 
+        function saveWordsToStorage() {
+            const dataToSave = [];
+            const rows = document.querySelectorAll('.word-row');
+            
+            rows.forEach(row => {
+                const catVal = row.querySelector('.cat-input').value.trim();
+                const wordVal = row.querySelector('.word-input').value.trim();
+                dataToSave.push({ category: catVal, word: wordVal });
+            });
+            
+            localStorage.setItem('hangmanSavedWords', JSON.stringify(dataToSave));
+        }
+
+        function clearStorage() {
+            if(confirm("האם אתה בטוח שברצונך למחוק את כל המילים שהזנת?")) {
+                localStorage.removeItem('hangmanSavedWords');
+                document.querySelectorAll('.cat-input, .word-input').forEach(input => input.value = "");
+            }
+        }
+
         function startSession() {
             wordsData = [];
             const rows = document.querySelectorAll('.word-row');
             
-            // מעבר על כל השורות ואיסוף הנתונים
             rows.forEach(row => {
                 const catVal = row.querySelector('.cat-input').value.trim();
                 const wordVal = row.querySelector('.word-input').value.trim();
                 
-                // אם הוכנסה מילה, שומרים אותה (אם לא הוכנסה קטגוריה, נרשום "כללי")
                 if (wordVal !== "") {
                     wordsData.push({
                         category: catVal !== "" ? catVal : "כללי",
@@ -332,18 +433,28 @@
         }
 
         function loadCurrentWord() {
-            // שליפת המילה והקטגוריה הנוכחית מהמערך
             const currentItem = wordsData[currentWordIndex];
-            secretWord = currentItem.word;
+            
+            const isEnglish = /[a-zA-Z]/.test(currentItem.word);
+            
+            secretWord = isEnglish ? currentItem.word.toUpperCase() : currentItem.word;
+            currentAlphabet = isEnglish ? englishAlphabet : hebrewAlphabet;
+            
+            document.getElementById('word-display').dir = isEnglish ? "ltr" : "rtl";
+
             guessedLetters = [];
             mistakes = 0;
             
-            // עדכון התצוגה למשתתפים
             document.getElementById('category-display').innerText = `נושא: ${currentItem.category}`;
             document.getElementById('word-counter-display').innerText = `מילה ${currentWordIndex + 1} מתוך ${wordsData.length}`;
             
             document.getElementById('status-msg').className = "status";
+            
+            // הגדרות כפתורי הפעולה
             document.getElementById('next-btn').style.display = 'none';
+            const skipBtn = document.getElementById('skip-btn');
+            skipBtn.style.display = 'inline-block';
+            skipBtn.innerText = (currentWordIndex < wordsData.length - 1) ? "⏭️ דלג מילה" : "⏭️ דלג וסיים";
             
             resetVisuals();
             createLetters();
@@ -353,7 +464,7 @@
         function createLetters() {
             const container = document.getElementById('letters-container');
             container.innerHTML = "";
-            alphabet.forEach(letter => {
+            currentAlphabet.forEach(letter => {
                 const btn = document.createElement('button');
                 btn.innerText = letter;
                 btn.className = 'letter-btn';
@@ -404,9 +515,10 @@
             let won = true;
             
             for (let char of secretWord) {
-                if (char === " ") {
+                if (char === " " || char === "-") {
                     const spaceSpan = document.createElement('span');
                     spaceSpan.className = 'space-box';
+                    if (char === "-") spaceSpan.innerText = "-"; 
                     wordDisplay.appendChild(spaceSpan);
                 } else {
                     let regularChar = finalToRegular[char] || char;
@@ -445,6 +557,8 @@
         function endRound() {
             document.querySelectorAll('.letter-btn').forEach(b => b.classList.add('disabled'));
             
+            // החלפת כפתור דילוג בכפתור סיום/מעבר רגיל
+            document.getElementById('skip-btn').style.display = 'none';
             const nextBtn = document.getElementById('next-btn');
             nextBtn.style.display = 'inline-block';
             
@@ -460,14 +574,61 @@
             if (currentWordIndex < wordsData.length) {
                 loadCurrentWord();
             } else {
-                // חזרה למסך ההגדרות
                 document.getElementById('setup').classList.remove('hidden');
                 document.getElementById('game-area').classList.add('hidden');
-                
-                // ניקוי כל השדות כדי שאפשר יהיה להתחיל משחק חדש נקי
-                document.querySelectorAll('.cat-input, .word-input').forEach(input => input.value = "");
             }
         }
+
+        // האזנה למקלדת הפיזית - משודרגת עם מתורגמן שפות
+        window.addEventListener('keydown', (e) => {
+            const gameArea = document.getElementById('game-area');
+            if (gameArea.classList.contains('hidden')) return;
+
+            const char = e.key;
+
+            // תמיכה באנטר
+            if (char === 'Enter') {
+                const nextBtn = document.getElementById('next-btn');
+                const skipBtn = document.getElementById('skip-btn');
+                
+                if (nextBtn.style.display === 'inline-block') {
+                    goToNextWord();
+                } else if (skipBtn.style.display === 'inline-block') {
+                    goToNextWord();
+                }
+                return;
+            }
+
+            let searchChar = char;
+            const isEnglishMode = (currentAlphabet === englishAlphabet);
+
+            // המרה חכמה אם הוקלד בשפה הלא נכונה
+            if (isEnglishMode) {
+                if (hebToEngMap[char]) {
+                    searchChar = hebToEngMap[char]; // המרה לעברית לאנגלית
+                }
+                searchChar = searchChar.toUpperCase();
+            } else {
+                const lowerChar = char.toLowerCase();
+                if (engToHebMap[lowerChar]) {
+                    searchChar = engToHebMap[lowerChar]; // המרה מאנגלית לעברית
+                }
+                // טיפול באותיות סופיות בעברית
+                if (finalToRegular[searchChar]) {
+                    searchChar = finalToRegular[searchChar]; 
+                }
+            }
+
+            // הפעלת הלחיצה רק אם התו תקין לשפה הנוכחית
+            if (currentAlphabet.includes(searchChar)) {
+                const buttons = document.querySelectorAll('.letter-btn');
+                buttons.forEach(btn => {
+                    if (btn.innerText === searchChar && !btn.classList.contains('disabled')) {
+                        makeGuess(searchChar, btn);
+                    }
+                });
+            }
+        });
     </script>
 </body>
 </html>
